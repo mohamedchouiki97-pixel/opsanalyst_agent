@@ -1,0 +1,38 @@
+[project]
+name = "opsanalyst-agent"
+version = "0.1.0"
+description = "A reliable business data agent: plain-English questions to safe, traced SQL."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+
+# Libraries are added only when a phase needs them (see DESIGN.md).
+dependencies = [
+    "pydantic>=2.9",           # typed data models
+    "pydantic-settings>=2.6",  # reads + validates settings from .env
+    "pg8000>=1.31",            # Postgres driver, pure Python (psycopg-binary is blocked
+                               # by Windows Smart App Control; see DESIGN.md D9)
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[tool.uv]
+package = false  # we run code from the repo folder; no need to "install" it
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "db: needs the local Postgres container running (docker compose up -d)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F = real errors, I = import order, B = common bugs, UP = modern syntax
+select = ["E", "F", "I", "B", "UP"]

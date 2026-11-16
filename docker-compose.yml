@@ -1,0 +1,28 @@
+# Local development stack.
+# Phase 0: only Postgres. API, UI and worker are added in Phase 6.
+#
+#   Start:  docker compose up -d
+#   Stop:   docker compose down          (data is kept)
+#   Wipe:   docker compose down -v       (deletes ALL database data)
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16          # Postgres 16 with the pgvector extension included
+    container_name: opsanalyst-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-opsanalyst}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opsanalyst_dev}   # local-only password
+      POSTGRES_DB: ${POSTGRES_DB:-opsanalyst}
+    ports:
+      - "127.0.0.1:5432:5432"              # reachable from this laptop only
+    volumes:
+      - pgdata:/var/lib/postgresql/data    # data survives container restarts
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro   # runs once, on first start
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-opsanalyst} -d ${POSTGRES_DB:-opsanalyst}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

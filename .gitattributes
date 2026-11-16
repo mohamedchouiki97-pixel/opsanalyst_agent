@@ -1,0 +1,3 @@
+# Store and check out all text files with Linux line endings (LF).
+# Containers (Postgres init scripts, Azure later) run Linux and can break on Windows CRLF.
+* text=auto eol=lf
