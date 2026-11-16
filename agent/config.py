@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     dataset: str = "tpch"
 
     # --- Database ---
+    # Owner connection: setup scripts, glossary index, trace storage.
     database_url: str = "postgresql://opsanalyst:opsanalyst_dev@localhost:5432/opsanalyst"
+    # Restricted connection: runs the agent's SQL (read-only, must SET ROLE first).
+    agent_database_url: str = "postgresql://agent_app:agent_dev@localhost:5432/opsanalyst"
 
     # --- LLM ---
     # "fake" is the default so nothing costs money unless you switch it on.

@@ -9,8 +9,8 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "pydantic>=2.9",           # typed data models
     "pydantic-settings>=2.6",  # reads + validates settings from .env
-    "pg8000>=1.31",            # Postgres driver, pure Python (psycopg-binary is blocked
-                               # by Windows Smart App Control; see DESIGN.md D9)
+    "pg8000>=1.31",            # Postgres driver, pure Python (see DESIGN.md D9)
+    "duckdb>=1.1",             # reads the TPC-H source data + writes Parquet
 ]
 
 [dependency-groups]

@@ -105,6 +105,11 @@ These rules apply to every file we write. When something breaks, they make it ea
 - Only `agent/db.py` imports the driver. If we switch back to psycopg later (e.g. on Linux in Azure), that's the only file that changes.
 - ⚠️ Watch for this again when we add compiled libraries (e.g. the local embedding model in Phase 1). We'll test each import before relying on it.
 
+### D10. TPC-H source data → **download pre-generated, shift dates +28 years** (added in Phase 1)
+- Smart App Control also blocks DuckDB's `tpch` extension, so `CALL dbgen()` can't run on the laptop. We download DuckDB's pre-generated `tpch-sf1.db` / `tpch-sf10.db` instead. It's the same data with official row counts.
+- **All dates shift +28 years** (1992–1998 → 2020–Aug 2026), so "last quarter" means something today. 28 years keeps weekdays and leap days aligned.
+- ⚠️ Phase 5 impact: the 22 official TPC-H queries and `tpch_answers()` use the original dates and need the blocked extension. We'll run that step inside a Linux container and shift the query dates by +28 years.
+
 Failure forensics (Phase 4) is **built fresh** here. There's no earlier BASWE code to reuse.
 You'll point me to old code when we reach each phase.
 
@@ -197,9 +202,12 @@ ops_analyst_agent/
 │       ├── access_policy.yaml
 │       ├── views.sql
 │       ├── seed/
-│       │   ├── generate.py      ← DuckDB dbgen → Parquet
-│       │   ├── load.py          ← Parquet → Postgres (+ keys, indexes)
-│       │   └── messiness.sql    ← dirty data, test orders, roles, RLS
+│       │   ├── download.py      ← pre-generated TPC-H → Parquet (see D10)
+│       │   ├── load.py          ← runs the steps below in order; safe to re-run
+│       │   ├── 01_tables.sql    ← empty tables
+│       │   ├── 02_keys_indexes.sql
+│       │   ├── 03_messiness.sql ← test orders, duplicate names, NULLs, migrations log
+│       │   └── 04_security.sql  ← roles, PII column grants, row-level security
 │       └── evals/
 │           ├── business.yaml
 │           ├── attacks.yaml
@@ -370,6 +378,9 @@ Git repo, `.gitignore` (with `.env`), `pyproject.toml` (uv, Python 3.12), `.env.
 **Done when:** `docker compose up` starts Postgres, `pytest` passes, and the first commit is made. **Cost: $0.** ✅ *Done Nov 15, 2026 (8 tests passing).*
 
 ### Phase 1: Company database + glossary (2 days)
+Split into **1a: database** (✅ built Nov 16, 2026: 23 tests passing; schema review with you pending) and **1b: dictionary + glossary + search** (after the review).
+*Performance note from 1a: a full-year revenue query takes ~3.5s on SF1 (RLS adds ~0.2s). At SF10 that's ~35s, over the 15s timeout. Planned fix in Phase 6: summary table / indexes.*
+
 Generate TPC-H SF1 (SF10 later) → load into Postgres with keys and indexes → messiness script (views, dirty values, test orders, roles, RLS) → read-only agent role → `profile_dataset.py` → hand-edit dictionary → write glossary (40–60 entries) → local embeddings + full-text search.
 **Done when:** row counts match TPC-H SF1, `europe_manager` sees only European customers (tested), the agent role cannot write (tested), and a glossary search for "sales" returns "revenue". **Cost: $0.**
 

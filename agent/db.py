@@ -35,7 +35,15 @@ def parse_database_url(database_url: str) -> dict:
     }
 
 
-def connect(database_url: str | None = None) -> pg8000.native.Connection:
-    """Open a new connection. Caller must close it (use contextlib.closing)."""
+def connect(
+    database_url: str | None = None, timeout: float | None = 30
+) -> pg8000.native.Connection:
+    """Open a new connection. Caller must close it (use contextlib.closing).
+
+    timeout = seconds to wait for the network before giving up (None = wait forever).
+    The default (30s) is longer than the agent's 15s statement_timeout, so slow queries
+    fail with Postgres's clear "statement timeout" error rather than a socket error.
+    Setup scripts that build indexes pass timeout=None.
+    """
     args = parse_database_url(database_url or get_settings().database_url)
-    return pg8000.native.Connection(**args, timeout=10)
+    return pg8000.native.Connection(**args, timeout=timeout)
