@@ -1,6 +1,9 @@
 # Secrets — never commit
 .env
 
+# Personal planning notes — stay local
+OpsAnalyst_Agent_Build_Guide.md
+
 # Python
 __pycache__/
 *.pyc

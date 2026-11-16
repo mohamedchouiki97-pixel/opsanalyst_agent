@@ -1,7 +1,7 @@
 # OpsAnalyst Agent — Design
 
 > Status: **Approved decisions D1–D7, revised for the Azure build guide** (Nov 15, 2026)
-> Source: [OpsAnalyst_Agent_Build_Guide.md](OpsAnalyst_Agent_Build_Guide.md) (Azure version)
+> Source: the OpsAnalyst build guide (Azure version), kept locally and not in the repo
 > Purpose: decide *how* we build it before writing code. We build phase by phase, and each phase must pass its "Done when" check.
 
 ---
@@ -378,7 +378,7 @@ Git repo, `.gitignore` (with `.env`), `pyproject.toml` (uv, Python 3.12), `.env.
 **Done when:** `docker compose up` starts Postgres, `pytest` passes, and the first commit is made. **Cost: $0.** ✅ *Done Nov 15, 2026 (8 tests passing).*
 
 ### Phase 1: Company database + glossary (2 days)
-Split into **1a: database** (✅ built Nov 16, 2026: 23 tests passing; schema review with you pending) and **1b: dictionary + glossary + search** (after the review).
+Split into **1a: database** (✅ built + reviewed Nov 16, 2026: 23 tests passing; date shift, view-level test-order filter and global supplier visibility approved) and **1b: dictionary + glossary + search** (after the review).
 *Performance note from 1a: a full-year revenue query takes ~3.5s on SF1 (RLS adds ~0.2s). At SF10 that's ~35s, over the 15s timeout. Planned fix in Phase 6: summary table / indexes.*
 
 Generate TPC-H SF1 (SF10 later) → load into Postgres with keys and indexes → messiness script (views, dirty values, test orders, roles, RLS) → read-only agent role → `profile_dataset.py` → hand-edit dictionary → write glossary (40–60 entries) → local embeddings + full-text search.
