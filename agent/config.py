@@ -36,8 +36,10 @@ class Settings(BaseSettings):
     # "fake" is the default so nothing costs money unless you switch it on.
     llm_provider: Literal["fake", "openai", "azure_openai"] = "fake"
     openai_api_key: str | None = None
-    model_strong: str = "gpt-4.1"
-    model_cheap: str = "gpt-4.1-mini"
+    # Cheap model: used for every step until the Cost Autopilot router exists.
+    model_cheap: str = "gpt-5.4-mini"
+    # Strong model: deliberately OPEN. Chosen together with the router (DESIGN.md D2).
+    model_strong: str | None = None
 
     # --- Embeddings (glossary/dictionary search) ---
     # "fake" is the default: free, deterministic, used by tests.

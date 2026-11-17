@@ -67,7 +67,10 @@ These rules apply to every file we write. When something breaks, they make it ea
   - `LLM_PROVIDER=openai` → uses `OPENAI_API_KEY` (Phases 0–5)
   - `LLM_PROVIDER=azure_openai` → uses the Azure endpoint + deployment name (Phase 6, no code change)
   - `LLM_PROVIDER=fake` → scripted answers for tests, costs $0
-- Two model tiers in config, as in the guide: **strong** = `gpt-4.1` (SQL writing) and **cheap** = `gpt-4.1-mini` (judging, simple steps). We confirm current names and prices at the cost checkpoint (Section 4).
+- Two model tiers in config (decided Nov 17, 2026):
+  - **cheap** = `gpt-5.4-mini` (`MODEL_CHEAP`). Used for **every** step until the router exists. It supports tool calling and structured outputs in both Chat Completions and Responses, and it's a reasoning model (`reasoning.effort`: none/low/medium/high/xhigh).
+  - **strong** = **open** (`MODEL_STRONG` unset). It will be chosen **together with the Cost Autopilot router**, which sends each task to the cheapest model that handles it well. Picking it now would mean guessing before we have measurements.
+  - Why not the models originally considered: `gpt-5.1-mini` doesn't exist; `gpt-5-mini` is deprecated; the guide's `gpt-4.1-mini` is older and has no reasoning. `gpt-6-luna` (≈8× cheaper) is a candidate for the router's cheapest tier, but in Chat Completions it can only call tools with reasoning turned off.
 
 ### D3. Tracing → **Postgres tables first, Langfuse later**
 - Phase 4 starts by writing traces to two simple tables (`ops.traces`, `ops.spans`). Langfuse (via OpenTelemetry) is added afterwards as an *extra exporter*.
@@ -138,15 +141,16 @@ Then I **wait for your "yes"**. Everything else (tests, database work, local scr
 - **The eval runner asks for confirmation** before a run that uses the real model: "This run = 50 questions ≈ $X. Continue? [y/N]".
 - **Embeddings cost almost nothing** (D4: ~$0.0003 to index everything), and tests use a fake embedder.
 
-### 4.3 Rough numbers (to check at the cost checkpoint)
-Using the prices I last knew (gpt-4.1 ≈ $2 / $8 per 1M input/output tokens, gpt-4.1-mini ≈ $0.40 / $1.60), and assuming one question uses about 10 steps, ~30k input tokens and ~2k output tokens:
+### 4.3 Rough numbers (prices checked Nov 17, 2026 on OpenAI's official pricing page)
+Assumption per question: ~10 steps, ~30K input tokens, ~5K output tokens. Output **includes reasoning tokens**; the pricing page doesn't say how they're billed, so we count them as output to be safe. Prompt caching would lower these numbers.
 
-| Model | ≈ per question | ≈ 50-question smoke run |
-|---|---|---|
-| gpt-4.1 | ~$0.08 | ~$4 |
-| gpt-4.1-mini | ~$0.015 | ~$0.75 |
+| Model | Input / Output per 1M | ≈ per question | ≈ 10-question run | ≈ 50-question smoke run |
+|---|---|---|---|---|
+| **gpt-5.4-mini (MODEL_CHEAP)** | $0.75 / $4.50 | ~$0.045 | **~$0.45** | ~$2.25 |
+| gpt-6-luna (router candidate) | $0.10 / $0.50 | ~$0.006 | ~$0.06 | ~$0.30 |
+| strong model | open | — | — | — |
 
-These are **estimates only**. We verify current prices before the first real call.
+Re-check prices before each new kind of real run; they change often.
 
 ### 4.4 Cost optimization plan (your idea, scheduled after the skeleton)
 Once the Phase 2 loop works **on the fake LLM**, we stop and write a short cost plan *before* making real calls in bulk. Ideas to measure:
@@ -295,8 +299,8 @@ All of these are validated by Pydantic models in `agent/config.py` at startup.
 ```
 LLM_PROVIDER=fake            # fake | openai | azure_openai
 OPENAI_API_KEY=...
-MODEL_STRONG=gpt-4.1
-MODEL_CHEAP=gpt-4.1-mini
+MODEL_CHEAP=gpt-5.4-mini
+# MODEL_STRONG=              # open: chosen with the Cost Autopilot router
 MAX_USD_PER_QUESTION=0.25
 MAX_USD_PER_DAY=2.00
 DATASET=tpch
@@ -391,7 +395,7 @@ Generate TPC-H SF1 (SF10 later) → load into Postgres with keys and indexes →
 1. Pydantic models → each tool + its tests → `llm.py` (with the fake provider) → `budget.py` → `loop.py` → CLI: `python -m agent.ask "question"`.
 2. **Skeleton check:** the full loop runs end to end on the **fake LLM**. Cost: $0.
 3. **Cost checkpoint:** we write the cost optimization plan (Section 4.4) and confirm current prices.
-4. 💲 First real run: ~10 hand-picked questions on the cheap model (≈ $0.15–$1, confirmed with you first).
+4. 💲 First real run: ~10 hand-picked questions on `gpt-5.4-mini` (≈ $0.45, confirmed with you first).
 **Done when:** the 10 questions return sensible answers, step/retry/budget limits are tested, and the cost per question is printed.
 
 ### Phase 3: Safety guardrails (1.5 days)

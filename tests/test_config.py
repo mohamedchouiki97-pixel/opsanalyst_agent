@@ -10,7 +10,7 @@ from agent.config import Settings, get_settings
 def clean_env(monkeypatch):
     """Make tests independent of the developer's real .env and shell variables."""
     for name in ["LLM_PROVIDER", "EMBEDDING_PROVIDER", "OPENAI_API_KEY", "DATASET",
-                 "MAX_USD_PER_QUESTION"]:
+                 "MAX_USD_PER_QUESTION", "MODEL_CHEAP", "MODEL_STRONG"]:
         monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
     yield
@@ -21,6 +21,8 @@ def test_defaults_are_safe():
     settings = Settings(_env_file=None)
 
     assert settings.llm_provider == "fake"  # no money spent by default
+    assert settings.model_cheap == "gpt-5.4-mini"
+    assert settings.model_strong is None  # open until the router decides
     assert settings.dataset == "tpch"
     assert settings.max_usd_per_question > 0
 

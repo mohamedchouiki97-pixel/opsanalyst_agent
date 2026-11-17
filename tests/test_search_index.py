@@ -57,9 +57,19 @@ def test_question_finds_late_shipment_definitions():
 def test_results_show_both_ranks_for_debugging():
     top = search("revenue", kinds=["glossary"], dataset="tpch")[0]
 
-    assert top.keyword_rank == 1
+    assert top.title == "Revenue"
+    assert top.exact_match
+    assert top.keyword_rank is not None
     assert top.vector_rank is not None
     assert top.payload["sql"].startswith("SUM(")
+
+
+def test_same_search_twice_gives_identical_results():
+    # Ties used to come back in storage order, so rebuilding the index could reorder them.
+    first = search("revenue by customer", dataset="tpch", limit=10)
+    second = search("revenue by customer", dataset="tpch", limit=10)
+
+    assert [r.doc_id for r in first] == [r.doc_id for r in second]
 
 
 def test_kind_filter_returns_only_tables():

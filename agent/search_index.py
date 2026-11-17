@@ -59,7 +59,8 @@ SELECT doc_id
 FROM semantic.documents
 WHERE dataset = :dataset AND embedding_model = :model AND kind = ANY(:kinds)
   AND tsv @@ replace(plainto_tsquery('english', :query)::text, '&', '|')::tsquery
-ORDER BY ts_rank(tsv, replace(plainto_tsquery('english', :query)::text, '&', '|')::tsquery) DESC
+ORDER BY ts_rank(tsv, replace(plainto_tsquery('english', :query)::text, '&', '|')::tsquery) DESC,
+         doc_id   -- tie-breaker: equal scores always come back in the same order
 LIMIT :limit
 """
 
@@ -68,6 +69,7 @@ SELECT doc_id
 FROM semantic.documents
 WHERE dataset = :dataset AND embedding_model = :model AND kind = ANY(:kinds)
   AND :query_lower = ANY(aliases)
+ORDER BY doc_id
 LIMIT :limit
 """
 
@@ -75,7 +77,8 @@ VECTOR_SQL = """
 SELECT doc_id
 FROM semantic.documents
 WHERE dataset = :dataset AND embedding_model = :model AND kind = ANY(:kinds)
-ORDER BY embedding <=> CAST(:vector AS vector)   -- <=> is cosine distance
+ORDER BY embedding <=> CAST(:vector AS vector),  -- <=> is cosine distance
+         doc_id                                   -- tie-breaker
 LIMIT :limit
 """
 
@@ -218,7 +221,8 @@ def _fuse(*ranked_lists: list[str]) -> list[tuple[str, float]]:
     for ranked in ranked_lists:
         for rank, doc_id in enumerate(ranked, start=1):
             scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (RRF_K + rank)
-    return sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    # Highest score first; equal scores ordered by doc_id so results are reproducible.
+    return sorted(scores.items(), key=lambda item: (-item[1], item[0]))
 
 
 def _rank_of(doc_id: str, ranked: list[str]) -> int | None:
