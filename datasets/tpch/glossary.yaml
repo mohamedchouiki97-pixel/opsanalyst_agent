@@ -21,15 +21,17 @@ entries:
       measured from. It is the latest non-test order date in the data, NOT the
       calendar date, because the data is a snapshot that ends on 2026-08-02.
     sql: (SELECT max(o_orderdate) FROM tpch.orders WHERE NOT o_is_test)
-    notes: Currently 2026-08-02. Never use CURRENT_DATE.  # ⚠ REVIEW
+    notes: Currently 2026-08-02. Never use CURRENT_DATE.
 
   - term: Fiscal year
     synonyms: [FY, financial year, company year]
     definition: >-
-      The fiscal year starts on February 1. FY2026 runs from 2026-02-01 to 2027-01-31
-      (named after the calendar year it starts in).
-    sql: EXTRACT(YEAR FROM (some_date - INTERVAL '1 month'))
-    notes: January belongs to the PREVIOUS fiscal year (2026-01-15 is in FY2025).  # ⚠ REVIEW
+      The fiscal year starts on February 1 and is named after the calendar year it
+      ENDS in (retail convention). FY2027 runs from 2026-02-01 to 2027-01-31.
+    sql: EXTRACT(YEAR FROM (some_date - INTERVAL '1 month')) + 1
+    notes: >-
+      January belongs to the fiscal year that is ending (2026-01-15 is in FY2026);
+      February starts the next one (2026-02-01 is in FY2027).
 
   - term: Fiscal quarter
     synonyms: [quarter, FQ, Q1, Q2, Q3, Q4, quarterly]
@@ -43,7 +45,7 @@ entries:
     synonyms: [previous quarter, prior quarter, most recent quarter, last completed quarter]
     definition: >-
       The most recent COMPLETED fiscal quarter before the reporting date. With the
-      reporting date 2026-08-02 that is FY2026 Q2: 2026-05-01 to 2026-07-31.
+      reporting date 2026-08-02 that is FY2027 Q2: 2026-05-01 to 2026-07-31.
     notes: The quarter containing the reporting date is "this quarter" (incomplete).
 
   - term: Year to date
@@ -198,10 +200,11 @@ entries:
     sql: AVG((l_returnflag = 'R')::int)
     filters: ["l_returnflag IN ('R', 'A')", "NOT o_is_test"]
     tables: [lineitem, orders]
-    notes: Measured by line count, not value.  # ⚠ REVIEW
+    notes: Measured by line count, not value. For value, use Returned revenue.
 
   - term: Returned revenue
-    synonyms: [value of returns, returned sales, revenue lost to returns]
+    synonyms: [return revenue, value of returns, returned sales, revenue lost to returns,
+               return value]
     definition: Net value (after discount) of returned lines.
     sql: SUM(l_extendedprice * (1 - l_discount))
     filters: ["l_returnflag = 'R'", "NOT o_is_test"]
