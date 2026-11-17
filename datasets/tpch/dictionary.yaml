@@ -1,0 +1,191 @@
+# TPC-H data dictionary: what tables and columns MEAN.
+#
+# Holds human knowledge only. Types, keys and nullability are read live from Postgres
+# by describe_table (Phase 2), so they never go stale here.
+# Draft regenerated with: scripts/profile_dataset.py (writes dictionary.draft.yaml)
+# A test checks that every table/column listed here exists in the database.
+
+schema: tpch
+
+tables:
+  # --------------------------------------------------------------------------
+  # Business views: PREFER THESE. Friendly names, test orders already excluded.
+  # --------------------------------------------------------------------------
+  v_order_lines:
+    description: >-
+      One row per product line on a customer order, with net revenue already computed.
+      QA test orders are already excluded. Best starting point for revenue, quantity and
+      discount questions.
+    notes:
+      - Returned lines are INCLUDED; filter with NOT is_returned for revenue.
+    columns:
+      order_key: Order identifier (orders.o_orderkey).
+      line_number: Line position within the order (1-7).
+      order_date: Date the customer placed the order.
+      order_status: "F = fully shipped, O = open (nothing shipped), P = partially shipped."
+      customer_key: Customer who placed the order (customer.c_custkey).
+      part_key: Product sold (part.p_partkey).
+      supplier_key: Supplier who fulfilled this line (supplier.s_suppkey).
+      quantity: Units ordered on this line.
+      gross_amount: Quantity x unit list price, before discount and tax.
+      discount: Discount rate between 0.00 and 0.10 (0.05 = 5%).
+      net_amount: gross_amount x (1 - discount). Revenue for this line, before tax.
+      is_returned: True when the customer returned this line.
+      ship_mode: Carrier mode (AIR, REG AIR, MAIL, SHIP, TRUCK, RAIL, FOB). NULL = unknown.
+
+  v_shipments:
+    description: >-
+      One row per shipped product line with ship, commit and receipt dates and a late flag.
+      QA test orders are already excluded. Best starting point for delivery performance and
+      late-shipment questions.
+    columns:
+      order_key: Order identifier (orders.o_orderkey).
+      line_number: Line position within the order.
+      supplier_key: Supplier responsible for the shipment (supplier.s_suppkey).
+      customer_key: Customer receiving the shipment (customer.c_custkey).
+      ship_date: Date the supplier shipped the line.
+      commit_date: Date the line was promised to arrive.
+      receipt_date: Date the customer actually received the line.
+      ship_mode: Carrier mode. NULL = unknown (carrier feed outage).
+      is_late: True when receipt_date is after commit_date.
+      days_late: Days between commit_date and receipt_date; 0 when on time or early.
+
+  v_customers:
+    description: >-
+      One row per customer with nation and region names. Contains no PII (no phone or
+      address).
+    columns:
+      customer_key: Customer identifier (customer.c_custkey).
+      customer_name: Customer name, e.g. Customer#000000001. Unique.
+      market_segment: AUTOMOBILE, BUILDING, FURNITURE, HOUSEHOLD or MACHINERY.
+      account_balance: Account balance in USD. Negative means the customer owes money.
+      nation: Country name in upper case, e.g. GERMANY.
+      region: AFRICA, AMERICA, ASIA, EUROPE or MIDDLE EAST.
+
+  v_suppliers:
+    description: One row per supplier with nation and region names.
+    notes:
+      - Supplier names are NOT unique (duplicate spellings). Group by supplier_key.
+    columns:
+      supplier_key: Supplier identifier (supplier.s_suppkey). Use this to group.
+      supplier_name: Supplier name. Some companies appear under several spellings.
+      account_balance: Supplier account balance in USD.
+      nation: Country name in upper case.
+      region: AFRICA, AMERICA, ASIA, EUROPE or MIDDLE EAST.
+
+  # --------------------------------------------------------------------------
+  # Raw tables
+  # --------------------------------------------------------------------------
+  region:
+    description: The 5 world regions.
+    columns:
+      r_regionkey: Region identifier (0-4).
+      r_name: AFRICA, AMERICA, ASIA, EUROPE or MIDDLE EAST (upper case).
+      r_comment: Free text. Not useful for analysis.
+
+  nation:
+    description: The 25 countries customers and suppliers are located in.
+    columns:
+      n_nationkey: Nation identifier (0-24).
+      n_name: Country name in upper case, e.g. UNITED STATES, GERMANY.
+      n_regionkey: Region the nation belongs to (region.r_regionkey).
+      n_comment: Free text. Not useful for analysis.
+
+  supplier:
+    description: Companies that supply parts.
+    notes:
+      - s_name is NOT unique. Suppliers 10, 20 and 30 also appear under other spellings
+        (e.g. 'SUPPLIER#000000010', 'Supplier #000000020'). Always group by s_suppkey.
+    columns:
+      s_suppkey: Supplier identifier. Use this to group or count suppliers.
+      s_name: Supplier name, e.g. Supplier#000000001. Not unique (see notes).
+      s_address: Supplier street address.
+      s_nationkey: Country of the supplier (nation.n_nationkey).
+      s_phone: Supplier phone number.
+      s_acctbal: Supplier account balance in USD.
+      s_comment: Free text. Not useful for analysis.
+
+  customer:
+    description: Companies that buy from us.
+    pii_columns: [c_phone, c_address]
+    columns:
+      c_custkey: Customer identifier.
+      c_name: Customer name, e.g. Customer#000000001.
+      c_address: Customer street address. PII, visible to admin only.
+      c_nationkey: Country of the customer (nation.n_nationkey).
+      c_phone: Customer phone number. PII, visible to admin only.
+      c_acctbal: Account balance in USD. Negative means the customer owes money.
+      c_mktsegment: Market segment (AUTOMOBILE, BUILDING, FURNITURE, HOUSEHOLD, MACHINERY).
+      c_comment: Free text. Not useful for analysis.
+
+  part:
+    description: Products we sell.
+    columns:
+      p_partkey: Part identifier.
+      p_name: Product name made of color words, e.g. 'goldenrod lavender spring chocolate'.
+      p_mfgr: Manufacturer, Manufacturer#1 to Manufacturer#5.
+      p_brand: Brand, e.g. Brand#13 (first digit = manufacturer).
+      p_type: >-
+        Three words: size class, finish, material, e.g. 'PROMO BURNISHED COPPER'.
+        Promotional parts start with 'PROMO'.
+      p_size: Size from 1 to 50.
+      p_container: Packaging, e.g. 'SM CASE', 'LG BOX', 'JUMBO PKG'.
+      p_retailprice: List price per unit in USD.
+      p_comment: Free text. Not useful for analysis.
+
+  partsupp:
+    description: >-
+      Which supplier offers which part, at what cost and with how much stock.
+      One row per (part, supplier) pair; each part has 4 suppliers.
+    columns:
+      ps_partkey: Part (part.p_partkey).
+      ps_suppkey: Supplier (supplier.s_suppkey).
+      ps_availqty: Units this supplier has available (current inventory).
+      ps_supplycost: What we pay this supplier per unit, in USD. Used for cost and margin.
+      ps_comment: Free text. Not useful for analysis.
+
+  orders:
+    description: Customer orders. One row per order.
+    notes:
+      - Contains QA test orders (o_is_test = true) with inflated prices. Exclude them from
+        every business metric.
+      - o_totalprice includes tax and returned items. Do not use it for revenue.
+    columns:
+      o_orderkey: Order identifier.
+      o_custkey: Customer who placed the order (customer.c_custkey).
+      o_orderstatus: "F = fully shipped, O = open (nothing shipped), P = partially shipped."
+      o_totalprice: Order total INCLUDING tax and returns. Not revenue (see notes).
+      o_orderdate: Date the order was placed. Range 2020-01-01 to 2026-08-02.
+      o_orderpriority: 1-URGENT, 2-HIGH, 3-MEDIUM, 4-NOT SPECIFIED, 5-LOW.
+      o_clerk: Employee who took the order, e.g. Clerk#000000951.
+      o_shippriority: Always 0. Not useful.
+      o_comment: Free text. QA test orders say 'QA TEST ORDER - DO NOT USE'.
+      o_is_test: True for QA test orders. ALWAYS filter with NOT o_is_test.
+
+  lineitem:
+    description: >-
+      One row per product line on an order (the biggest table, ~6M rows). Holds prices,
+      discounts and all shipping dates.
+    notes:
+      - Does not know about test orders; join orders and filter NOT o_is_test, or use the
+        v_order_lines / v_shipments views.
+      - l_linestatus and l_returnflag were frozen when the source system was migrated
+        (2023-06-17). To know whether a line shipped, compare l_shipdate with the
+        reporting date instead.
+    columns:
+      l_orderkey: Order (orders.o_orderkey).
+      l_partkey: Part sold (part.p_partkey).
+      l_suppkey: Supplier who fulfilled the line (supplier.s_suppkey).
+      l_linenumber: Line position within the order (1-7).
+      l_quantity: Units ordered.
+      l_extendedprice: Quantity x unit list price, BEFORE discount and tax.
+      l_discount: Discount rate 0.00-0.10 (0.05 = 5%).
+      l_tax: Tax rate 0.00-0.08.
+      l_returnflag: "R = returned by the customer, A = received and kept, N = not yet received."
+      l_linestatus: "F = shipped, O = not yet shipped (frozen at 2023-06-17, see notes)."
+      l_shipdate: Date the supplier shipped the line.
+      l_commitdate: Date the line was promised to arrive.
+      l_receiptdate: Date the customer received the line.
+      l_shipinstruct: Delivery instruction (DELIVER IN PERSON, COLLECT COD, NONE, TAKE BACK RETURN).
+      l_shipmode: Carrier mode (AIR, REG AIR, MAIL, SHIP, TRUCK, RAIL, FOB). NULL = unknown.
+      l_comment: Free text. Not useful for analysis.

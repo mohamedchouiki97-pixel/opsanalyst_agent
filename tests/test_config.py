@@ -9,7 +9,8 @@ from agent.config import Settings, get_settings
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     """Make tests independent of the developer's real .env and shell variables."""
-    for name in ["LLM_PROVIDER", "OPENAI_API_KEY", "DATASET", "MAX_USD_PER_QUESTION"]:
+    for name in ["LLM_PROVIDER", "EMBEDDING_PROVIDER", "OPENAI_API_KEY", "DATASET",
+                 "MAX_USD_PER_QUESTION"]:
         monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
     yield

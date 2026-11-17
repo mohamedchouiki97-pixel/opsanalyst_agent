@@ -13,6 +13,7 @@ __pycache__/
 
 # Generated data (big files, re-creatable from scripts)
 data/
+*.draft.yaml
 *.parquet
 *.duckdb
 

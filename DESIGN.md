@@ -74,9 +74,11 @@ These rules apply to every file we write. When something breaks, they make it ea
 - **Why:** if Langfuse breaks, the agent still works and you still have your traces. You debug with SQL:
   `SELECT * FROM ops.spans WHERE trace_id = '...' ORDER BY started_at;`
 
-### D4. Glossary search → **Postgres full-text search + pgvector with a small local embedding model**
-- Keyword search finds exact terms. Vectors catch synonyms ("sales" ≈ "revenue"). We combine both (hybrid search).
-- Embeddings come from a **local** model, so there are no API calls and no cost, and it works offline.
+### D4. Glossary search → **Postgres full-text search + pgvector with OpenAI embeddings** (changed Nov 17, 2026)
+- Keyword search finds exact terms. Vectors catch synonyms ("sales" ≈ "revenue"). We combine both (hybrid search, merged with reciprocal rank fusion).
+- Embeddings: OpenAI `text-embedding-3-small` (1536 dimensions). On Azure the same model runs as an Azure OpenAI deployment (config change only).
+- `agent/embeddings.py` is the only file that calls the embedding API. It has `openai` / `azure_openai` / `fake` providers, like `llm.py`. Tests use `fake` (free, deterministic).
+- Cost: building the index ≈ 13K tokens ≈ $0.0003; each search embeds the question ≈ $0.0000004. Real calls still follow the approval rule.
 - **Why:** each half can be tested on its own if results look wrong.
 
 ### D5. PII handling → **block, don't mask** (v1), masking optional later
@@ -134,7 +136,7 @@ Then I **wait for your "yes"**. Everything else (tests, database work, local scr
   - `MAX_USD_PER_QUESTION` (e.g. $0.25): stops the run with status `BUDGET_EXCEEDED`.
   - `MAX_USD_PER_DAY` (e.g. $2.00): refuses new real calls until the next day.
 - **The eval runner asks for confirmation** before a run that uses the real model: "This run = 50 questions ≈ $X. Continue? [y/N]".
-- **Embeddings are local** (D4), so they cost $0.
+- **Embeddings cost almost nothing** (D4: ~$0.0003 to index everything), and tests use a fake embedder.
 
 ### 4.3 Rough numbers (to check at the cost checkpoint)
 Using the prices I last knew (gpt-4.1 ≈ $2 / $8 per 1M input/output tokens, gpt-4.1-mini ≈ $0.40 / $1.60), and assuming one question uses about 10 steps, ~30k input tokens and ~2k output tokens:
@@ -378,7 +380,8 @@ Git repo, `.gitignore` (with `.env`), `pyproject.toml` (uv, Python 3.12), `.env.
 **Done when:** `docker compose up` starts Postgres, `pytest` passes, and the first commit is made. **Cost: $0.** ✅ *Done Nov 15, 2026 (8 tests passing).*
 
 ### Phase 1: Company database + glossary (2 days)
-Split into **1a: database** (✅ built + reviewed Nov 16, 2026: 23 tests passing; date shift, view-level test-order filter and global supplier visibility approved) and **1b: dictionary + glossary + search** (after the review).
+Split into **1a: database** (✅ built + reviewed Nov 16, 2026: 23 tests passing; date shift, view-level test-order filter and global supplier visibility approved) and **1b: dictionary + glossary + search** (✅ built Nov 17, 2026 on fake embeddings: 46 tests passing; real OpenAI index pending approval; 3 glossary entries marked ⚠ REVIEW).
+*Search note from 1b: hybrid search uses THREE ranked lists: exact term/synonym match, keyword and vector. Without the exact list, "sales" returned "Gross sales" instead of "Revenue".*
 *Performance note from 1a: a full-year revenue query takes ~3.5s on SF1 (RLS adds ~0.2s). At SF10 that's ~35s, over the 15s timeout. Planned fix in Phase 6: summary table / indexes.*
 
 Generate TPC-H SF1 (SF10 later) → load into Postgres with keys and indexes → messiness script (views, dirty values, test orders, roles, RLS) → read-only agent role → `profile_dataset.py` → hand-edit dictionary → write glossary (40–60 entries) → local embeddings + full-text search.

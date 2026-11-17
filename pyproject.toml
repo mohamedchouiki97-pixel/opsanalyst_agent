@@ -11,6 +11,8 @@ dependencies = [
     "pydantic-settings>=2.6",  # reads + validates settings from .env
     "pg8000>=1.31",            # Postgres driver, pure Python (see DESIGN.md D9)
     "duckdb>=1.1",             # reads the TPC-H source data + writes Parquet
+    "openai>=1.50",            # embeddings now; chat models in Phase 2 (OpenAI + Azure)
+    "pyyaml>=6.0",             # reads dictionary.yaml / glossary.yaml / access_policy.yaml
 ]
 
 [dependency-groups]

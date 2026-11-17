@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     model_strong: str = "gpt-4.1"
     model_cheap: str = "gpt-4.1-mini"
 
+    # --- Embeddings (glossary/dictionary search) ---
+    # "fake" is the default: free, deterministic, used by tests.
+    embedding_provider: Literal["fake", "openai", "azure_openai"] = "fake"
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536  # must match the vector(1536) column in the index
+    embedding_usd_per_1m_tokens: float = 0.02  # verify on OpenAI's pricing page
+
     # --- Spending caps (enforced in agent/budget.py, Phase 2) ---
     max_usd_per_question: float = Field(default=0.25, gt=0)
     max_usd_per_day: float = Field(default=2.00, gt=0)
@@ -52,5 +59,7 @@ def get_settings() -> Settings:
     # Fail fast: a real provider without its key would only fail later, mid-question.
     if settings.llm_provider == "openai" and not settings.openai_api_key:
         raise ValueError("LLM_PROVIDER=openai but OPENAI_API_KEY is not set in .env")
+    if settings.embedding_provider == "openai" and not settings.openai_api_key:
+        raise ValueError("EMBEDDING_PROVIDER=openai but OPENAI_API_KEY is not set in .env")
 
     return settings

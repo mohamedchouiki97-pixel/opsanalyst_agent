@@ -1,0 +1,450 @@
+# TPC-H business glossary: how THIS company defines its terms.
+#
+# The agent retrieves entries with search_glossary (hybrid keyword + vector search).
+# Each entry:
+#   term       canonical name
+#   synonyms   other ways people ask for it (helps search)
+#   definition plain-English meaning
+#   sql        the exact expression to use (optional)
+#   filters    WHERE conditions that must always be applied (optional)
+#   tables     where the columns live (optional)
+#   notes      gotchas (optional)
+
+entries:
+  # ==========================================================================
+  # Time and reporting periods
+  # ==========================================================================
+  - term: Reporting date
+    synonyms: [as of date, today, current date, now, latest date, data snapshot]
+    definition: >-
+      The date relative periods ("last quarter", "this year", "last 12 months") are
+      measured from. It is the latest non-test order date in the data, NOT the
+      calendar date, because the data is a snapshot that ends on 2026-08-02.
+    sql: (SELECT max(o_orderdate) FROM tpch.orders WHERE NOT o_is_test)
+    notes: Currently 2026-08-02. Never use CURRENT_DATE.  # ⚠ REVIEW
+
+  - term: Fiscal year
+    synonyms: [FY, financial year, company year]
+    definition: >-
+      The fiscal year starts on February 1. FY2026 runs from 2026-02-01 to 2027-01-31
+      (named after the calendar year it starts in).
+    sql: EXTRACT(YEAR FROM (some_date - INTERVAL '1 month'))
+    notes: January belongs to the PREVIOUS fiscal year (2026-01-15 is in FY2025).  # ⚠ REVIEW
+
+  - term: Fiscal quarter
+    synonyms: [quarter, FQ, Q1, Q2, Q3, Q4, quarterly]
+    definition: >-
+      Quarters of the fiscal year, which starts in February. Q1 = Feb-Apr,
+      Q2 = May-Jul, Q3 = Aug-Oct, Q4 = Nov-Jan. "Quarter" always means fiscal quarter
+      unless the user says "calendar quarter".
+    sql: EXTRACT(QUARTER FROM (some_date - INTERVAL '1 month'))
+
+  - term: Last quarter
+    synonyms: [previous quarter, prior quarter, most recent quarter, last completed quarter]
+    definition: >-
+      The most recent COMPLETED fiscal quarter before the reporting date. With the
+      reporting date 2026-08-02 that is FY2026 Q2: 2026-05-01 to 2026-07-31.
+    notes: The quarter containing the reporting date is "this quarter" (incomplete).
+
+  - term: Year to date
+    synonyms: [YTD, fiscal year to date, so far this year]
+    definition: >-
+      From the start of the current fiscal year (February 1) up to and including the
+      reporting date. With the reporting date 2026-08-02: 2026-02-01 to 2026-08-02.
+
+  - term: Calendar quarter
+    synonyms: [calendar Q1, January to March]
+    definition: >-
+      Standard calendar quarters (Q1 = Jan-Mar). Only use when the user explicitly
+      says "calendar"; otherwise quarters are fiscal.
+    sql: EXTRACT(QUARTER FROM some_date)
+
+  - term: Last 12 months
+    synonyms: [trailing twelve months, TTM, past year, rolling 12 months, LTM]
+    definition: The 12 months ending on the reporting date (2025-08-03 to 2026-08-02).
+
+  # ==========================================================================
+  # Revenue and money
+  # ==========================================================================
+  - term: Revenue
+    synonyms: [net revenue, sales, net sales, turnover, income, how much we sold]
+    definition: >-
+      Money earned from sales after discounts and before tax, excluding returned lines
+      and QA test orders.
+    sql: SUM(l_extendedprice * (1 - l_discount))
+    filters: ["l_returnflag <> 'R'", "NOT o_is_test"]
+    tables: [lineitem, orders]
+    notes: >-
+      Easiest via the view: SUM(net_amount) FROM tpch.v_order_lines WHERE NOT is_returned
+      (test orders are already excluded there). Never use o_totalprice for revenue.
+
+  - term: Gross sales
+    synonyms: [gross revenue, list price sales, sales before discount]
+    definition: Sales at list price, before discounts and tax, excluding test orders.
+    sql: SUM(l_extendedprice)
+    filters: ["NOT o_is_test"]
+    tables: [lineitem, orders]
+
+  - term: Discount amount
+    synonyms: [discounts given, money given away in discounts, markdowns]
+    definition: Total value of discounts granted.
+    sql: SUM(l_extendedprice * l_discount)
+    filters: ["NOT o_is_test"]
+    tables: [lineitem, orders]
+
+  - term: Average discount
+    synonyms: [discount rate, avg discount, typical discount]
+    definition: Revenue-weighted average discount rate (larger lines count more).
+    sql: SUM(l_extendedprice * l_discount) / NULLIF(SUM(l_extendedprice), 0)
+    filters: ["NOT o_is_test"]
+    tables: [lineitem, orders]
+    notes: A plain AVG(l_discount) treats a $10 line like a $10,000 line; avoid it.
+
+  - term: Tax amount
+    synonyms: [taxes, sales tax collected]
+    definition: Tax charged on discounted prices.
+    sql: SUM(l_extendedprice * (1 - l_discount) * l_tax)
+    filters: ["NOT o_is_test"]
+    tables: [lineitem, orders]
+
+  - term: Invoiced amount
+    synonyms: [billed amount, charged amount, amount invoiced, total including tax]
+    definition: What customers were billed, after discount and including tax.
+    sql: SUM(l_extendedprice * (1 - l_discount) * (1 + l_tax))
+    filters: ["NOT o_is_test"]
+    tables: [lineitem, orders]
+
+  - term: Cost of goods sold
+    synonyms: [COGS, product cost, supply cost of sales, cost of sales]
+    definition: >-
+      What we paid suppliers for the units we sold: the supplier's unit cost times the
+      quantity, excluding returned lines and test orders.
+    sql: SUM(ps.ps_supplycost * l.l_quantity)
+    filters: ["l.l_returnflag <> 'R'", "NOT o.o_is_test"]
+    tables: [lineitem, partsupp, orders]
+    notes: >-
+      Join partsupp on BOTH keys: ps.ps_partkey = l.l_partkey AND ps.ps_suppkey = l.l_suppkey.
+      Joining on part only multiplies every line by 4 (fan-out).
+
+  - term: Margin
+    synonyms: [gross margin, profit, gross profit, margin dollars]
+    definition: Revenue minus cost of goods sold.
+    sql: SUM(l.l_extendedprice * (1 - l.l_discount) - ps.ps_supplycost * l.l_quantity)
+    filters: ["l.l_returnflag <> 'R'", "NOT o.o_is_test"]
+    tables: [lineitem, partsupp, orders]
+    notes: Same partsupp join rule as cost of goods sold (both keys).
+
+  - term: Margin percent
+    synonyms: [margin %, gross margin rate, profitability, margin rate]
+    definition: Margin divided by revenue.
+    sql: >-
+      SUM(l.l_extendedprice * (1 - l.l_discount) - ps.ps_supplycost * l.l_quantity)
+      / NULLIF(SUM(l.l_extendedprice * (1 - l.l_discount)), 0)
+    filters: ["l.l_returnflag <> 'R'", "NOT o.o_is_test"]
+    tables: [lineitem, partsupp, orders]
+
+  - term: Average order value
+    synonyms: [AOV, average order size, revenue per order]
+    definition: Revenue divided by the number of orders.
+    sql: SUM(l_extendedprice * (1 - l_discount)) / NULLIF(COUNT(DISTINCT o_orderkey), 0)
+    filters: ["l_returnflag <> 'R'", "NOT o_is_test"]
+    tables: [lineitem, orders]
+
+  - term: Order total price
+    synonyms: [o_totalprice, order total]
+    definition: >-
+      The order total stored on the order header. It INCLUDES tax and returned lines,
+      so it is NOT revenue.
+    tables: [orders]
+    notes: Use only when the user explicitly asks for the stored order total.
+
+  # ==========================================================================
+  # Volume
+  # ==========================================================================
+  - term: Order count
+    synonyms: [number of orders, orders placed, how many orders]
+    definition: Number of distinct orders, excluding test orders.
+    sql: COUNT(DISTINCT o_orderkey)
+    filters: ["NOT o_is_test"]
+    tables: [orders]
+    notes: When joined to lineitem, use COUNT(DISTINCT ...); a plain COUNT counts lines.
+
+  - term: Units sold
+    synonyms: [quantity sold, volume, units, items sold]
+    definition: Total units on order lines, excluding returned lines and test orders.
+    sql: SUM(l_quantity)
+    filters: ["l_returnflag <> 'R'", "NOT o_is_test"]
+    tables: [lineitem, orders]
+
+  - term: Order line
+    synonyms: [line item, line, order item]
+    definition: One product on one order. An order has 1 to 7 lines.
+    tables: [lineitem]
+
+  # ==========================================================================
+  # Returns
+  # ==========================================================================
+  - term: Returned item
+    synonyms: [return, returns, returned line, refund]
+    definition: An order line the customer sent back (l_returnflag = 'R').
+    sql: l_returnflag = 'R'
+    tables: [lineitem]
+
+  - term: Return rate
+    synonyms: [returns rate, percent returned, return percentage]
+    definition: >-
+      Share of RECEIVED order lines that were returned. Lines not yet received
+      (l_returnflag = 'N') can't be returned yet, so they are excluded.
+    sql: AVG((l_returnflag = 'R')::int)
+    filters: ["l_returnflag IN ('R', 'A')", "NOT o_is_test"]
+    tables: [lineitem, orders]
+    notes: Measured by line count, not value.  # ⚠ REVIEW
+
+  - term: Returned revenue
+    synonyms: [value of returns, returned sales, revenue lost to returns]
+    definition: Net value (after discount) of returned lines.
+    sql: SUM(l_extendedprice * (1 - l_discount))
+    filters: ["l_returnflag = 'R'", "NOT o_is_test"]
+    tables: [lineitem, orders]
+
+  # ==========================================================================
+  # Shipping and delivery
+  # ==========================================================================
+  - term: Late shipment
+    synonyms: [late delivery, delayed shipment, missed commit date, late order, delays]
+    definition: An order line received AFTER the date it was committed (promised) for.
+    sql: l_receiptdate > l_commitdate
+    filters: ["NOT o_is_test"]
+    tables: [lineitem, orders]
+    notes: Easiest via tpch.v_shipments (is_late column, test orders already excluded).
+
+  - term: On-time delivery rate
+    synonyms: [OTD, on-time rate, delivery performance, on-time percentage, OTIF]
+    definition: Share of order lines received on or before the committed date.
+    sql: AVG((l_receiptdate <= l_commitdate)::int)
+    filters: ["NOT o_is_test"]
+    tables: [lineitem, orders]
+
+  - term: Days late
+    synonyms: [delay days, lateness, how late]
+    definition: Days between the committed date and the receipt date; 0 if on time.
+    sql: GREATEST(l_receiptdate - l_commitdate, 0)
+    tables: [lineitem]
+    notes: For "average days late of late shipments", filter to late lines first.
+
+  - term: Transit time
+    synonyms: [shipping time, delivery time, lead time in transit, days in transit]
+    definition: Days from shipping to receipt.
+    sql: l_receiptdate - l_shipdate
+    tables: [lineitem]
+
+  - term: Order to ship time
+    synonyms: [fulfillment time, processing time, time to ship, handling time]
+    definition: Days from the order date to the ship date.
+    sql: l_shipdate - o_orderdate
+    tables: [lineitem, orders]
+
+  - term: Ship mode
+    synonyms: [carrier, shipping method, transport mode, freight mode]
+    definition: >-
+      How a line was shipped: AIR, REG AIR, MAIL, SHIP, TRUCK, RAIL or FOB.
+      NULL means unknown (carrier feed outage).
+    tables: [lineitem]
+    notes: Mention NULL ship modes in caveats when grouping by ship mode.
+
+  - term: Air shipments
+    synonyms: [air freight, shipped by air]
+    definition: Lines shipped by air, which includes both AIR and REG AIR.
+    sql: l_shipmode IN ('AIR', 'REG AIR')
+    tables: [lineitem]
+
+  - term: Shipped
+    synonyms: [has shipped, already shipped, dispatched]
+    definition: A line has shipped if its ship date is on or before the reporting date.
+    sql: l_shipdate <= (SELECT max(o_orderdate) FROM tpch.orders WHERE NOT o_is_test)
+    tables: [lineitem]
+    notes: Do NOT use l_linestatus; it was frozen at 2023-06-17.
+
+  # ==========================================================================
+  # Orders
+  # ==========================================================================
+  - term: Order status
+    synonyms: [status, fulfilled, filled, open order, partially shipped]
+    definition: "F = fully shipped (filled), O = open (nothing shipped), P = partially shipped."
+    sql: o_orderstatus
+    tables: [orders]
+    notes: The codes are single letters. 'FILLED' or 'OPEN' will match nothing.
+
+  - term: Open orders
+    synonyms: [unfulfilled orders, backlog, pending orders, unshipped orders]
+    definition: Orders where nothing has shipped yet (o_orderstatus = 'O').
+    sql: o_orderstatus = 'O'
+    filters: ["NOT o_is_test"]
+    tables: [orders]
+
+  - term: Urgent orders
+    synonyms: [rush orders, high priority orders, priority orders]
+    definition: >-
+      Orders with priority 1-URGENT. "High priority" means 1-URGENT or 2-HIGH.
+    sql: o_orderpriority IN ('1-URGENT', '2-HIGH')
+    tables: [orders]
+
+  - term: Test order
+    synonyms: [QA order, fake order, dummy order]
+    definition: >-
+      Orders created by QA with inflated prices (o_is_test = true). They are not real
+      business and must be excluded from every metric.
+    sql: o_is_test
+    tables: [orders]
+    notes: The v_order_lines and v_shipments views already exclude them.
+
+  # ==========================================================================
+  # Customers
+  # ==========================================================================
+  - term: Active customer
+    synonyms: [active account, engaged customer, current customer]
+    definition: >-
+      A customer with at least one non-test order in the last 12 months before the
+      reporting date.
+    sql: >-
+      EXISTS (SELECT 1 FROM tpch.orders o WHERE o.o_custkey = c.c_custkey AND NOT o.o_is_test
+      AND o.o_orderdate > (SELECT max(o_orderdate) FROM tpch.orders WHERE NOT o_is_test)
+      - INTERVAL '12 months')
+    tables: [customer, orders]
+
+  - term: New customer
+    synonyms: [first-time customer, newly acquired customer, customer acquisition]
+    definition: A customer whose FIRST non-test order falls in the period asked about.
+    sql: MIN(o_orderdate) per customer, then filter on the period
+    filters: ["NOT o_is_test"]
+    tables: [orders]
+
+  - term: Customer revenue
+    synonyms: [top customers, best customers, biggest customers, customer value]
+    definition: Revenue (see Revenue) grouped by customer.
+    sql: SUM(l_extendedprice * (1 - l_discount)) ... GROUP BY o_custkey
+    filters: ["l_returnflag <> 'R'", "NOT o_is_test"]
+    tables: [lineitem, orders, customer]
+
+  - term: Customers who never ordered
+    synonyms: [inactive customers, customers with no orders, dormant customers]
+    definition: Customers with no non-test orders at all (about a third of customers).
+    sql: NOT EXISTS (SELECT 1 FROM tpch.orders o WHERE o.o_custkey = c.c_custkey AND NOT o.o_is_test)
+    tables: [customer, orders]
+
+  - term: Account balance
+    synonyms: [balance, credit balance, money owed, customers in debt]
+    definition: >-
+      Customer account balance in USD. Negative means the customer owes us money
+      (about 9% of customers).
+    sql: c_acctbal
+    tables: [customer]
+
+  - term: Market segment
+    synonyms: [segment, industry, customer type, vertical]
+    definition: Customer industry, one of AUTOMOBILE, BUILDING, FURNITURE, HOUSEHOLD, MACHINERY.
+    sql: c_mktsegment
+    tables: [customer]
+
+  - term: Customer contact details
+    synonyms: [phone number, address, contact info, PII]
+    definition: >-
+      Customer phone (c_phone) and address (c_address) are personal data, visible to
+      the admin role only.
+    tables: [customer]
+    notes: Other roles get "permission denied"; tell the user it is restricted.
+
+  # ==========================================================================
+  # Geography
+  # ==========================================================================
+  - term: Region
+    synonyms: [territory, geography, continent, area]
+    definition: One of 5 regions, stored in upper case - AFRICA, AMERICA, ASIA, EUROPE, MIDDLE EAST.
+    sql: r_name
+    tables: [region, nation]
+    notes: Values are upper case; 'Europe' matches nothing.
+
+  - term: EMEA
+    synonyms: [Europe Middle East and Africa]
+    definition: The combination of the EUROPE, MIDDLE EAST and AFRICA regions.
+    sql: r_name IN ('EUROPE', 'MIDDLE EAST', 'AFRICA')
+    tables: [region]
+
+  - term: Americas
+    synonyms: [North America, South America, the US region]
+    definition: The AMERICA region (singular in the data).
+    sql: r_name = 'AMERICA'
+    tables: [region]
+
+  - term: Country
+    synonyms: [nation, market, country of customer]
+    definition: One of 25 nations, upper case (e.g. UNITED STATES, GERMANY, UNITED KINGDOM).
+    sql: n_name
+    tables: [nation]
+    notes: >-
+      A customer's country comes from c_nationkey; a supplier's from s_nationkey.
+      Ask which one if the question is unclear.
+
+  # ==========================================================================
+  # Suppliers and products
+  # ==========================================================================
+  - term: Supplier
+    synonyms: [vendor, seller, manufacturer partner, provider]
+    definition: A company that supplies parts. Identify suppliers by s_suppkey.
+    tables: [supplier]
+    notes: >-
+      Supplier names are NOT unique (duplicate spellings for suppliers 10, 20, 30).
+      Group and count by s_suppkey, and show the name only as a label.
+
+  - term: Supplier late shipments
+    synonyms: [worst suppliers, suppliers causing delays, unreliable suppliers]
+    definition: Number of late order lines per supplier.
+    sql: COUNT(*) FILTER (WHERE l_receiptdate > l_commitdate) ... GROUP BY l_suppkey
+    filters: ["NOT o_is_test"]
+    tables: [lineitem, orders, supplier]
+    notes: Easiest via tpch.v_shipments grouped by supplier_key.
+
+  - term: Supply cost
+    synonyms: [unit cost, purchase price, cost price, supplier price]
+    definition: What we pay a specific supplier per unit of a specific part.
+    sql: ps_supplycost
+    tables: [partsupp]
+    notes: The cost depends on BOTH the part and the supplier.
+
+  - term: Inventory
+    synonyms: [stock, available quantity, units on hand, stock level]
+    definition: Units available from suppliers (ps_availqty), per part and supplier.
+    sql: SUM(ps_availqty)
+    tables: [partsupp]
+
+  - term: Inventory value
+    synonyms: [stock value, value of inventory]
+    definition: Available units times supplier unit cost.
+    sql: SUM(ps_availqty * ps_supplycost)
+    tables: [partsupp]
+
+  - term: List price
+    synonyms: [retail price, catalog price, MSRP]
+    definition: The catalog price per unit of a part (p_retailprice).
+    sql: p_retailprice
+    tables: [part]
+
+  - term: Promotional parts
+    synonyms: [promo parts, promo products, promotions]
+    definition: Parts whose type starts with PROMO.
+    sql: p_type LIKE 'PROMO%'
+    tables: [part]
+
+  - term: Product category
+    synonyms: [part type, product type, size class, material]
+    definition: >-
+      p_type has three words - size class (ECONOMY, LARGE, MEDIUM, PROMO, SMALL,
+      STANDARD), finish and material (e.g. COPPER, BRASS, STEEL, TIN, NICKEL).
+    sql: split_part(p_type, ' ', 1)
+    tables: [part]
+
+  - term: Brand
+    synonyms: [product brand, label]
+    definition: Product brand, e.g. Brand#13. The first digit is the manufacturer number.
+    sql: p_brand
+    tables: [part]
